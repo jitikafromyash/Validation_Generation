@@ -1,0 +1,47 @@
+## User-specific files ##
+.vs/
+.idea/
+.vscode/
+
+## Windows image file caches ##
+Thumbs.db
+ehthumbs.db
+
+## Windows Installer files ##
+*.cab
+*.msi
+*.msm
+*.msp
+
+## Windows Installer files ##
+*.cab
+*.msi
+*.msm
+*.msp
+
+## .NET Core ##
+bin/
+obj/
+project.lock.json
+project.fragment.lock.json
+artifacts/
+
+## ASP.NET ##
+# User-specific files
+# .vs folder (Visual Studio)
+.vs/
+
+# ASP.NET Scaffolding
+ScaffoldingReadMe.txt
+
+## NPM packages ##
+node_modules/
+
+## ASP.NET Core runtime ##
+# Windows
+project.json
+appsettings.json
+appsettings.Development.json
+
+# Others that are specific to ASP.NET Core
+wwwroot/

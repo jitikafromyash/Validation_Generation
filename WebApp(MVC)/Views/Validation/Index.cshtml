@@ -1,0 +1,83 @@
+﻿@{
+    ViewData["Title"] = "Form Validation";
+}
+
+<!-- Page Title -->
+<div class="text-center my-5">
+    <h1 class="display-4">Form Validation</h1>
+    <p class="lead">Validate your JSX code and get real-time feedback in JSON format.</p>
+</div>
+
+<div class="container">
+    <!-- Form -->
+    <div class="card shadow-lg mb-5">
+        <div class="card-header bg-primary text-white">
+            <h4>Enter React JSX Code</h4>
+        </div>
+        <div class="card-body">
+            <form id="validationForm">
+                <div class="form-group">
+                    <label for="jsxCode" class="font-weight-bold">JSX Code:</label>
+                    <textarea id="jsxCode" class="form-control" rows="10" placeholder="Enter your JSX validation code here..." required></textarea>
+                </div>
+                <div class="text-center mt-3">
+                    <button type="submit" class="btn btn-success btn-lg">Validate</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Result Output -->
+    <div class="card shadow-lg">
+        <div class="card-header bg-info text-white">
+            <h4>Validation Result</h4>
+        </div>
+        <div class="card-body">
+            <div id="validationResult" class="alert alert-info" style="display: none;">
+                <h5>JSON Result:</h5>
+                <pre id="jsonOutput" class="bg-light p-3 rounded"></pre>
+            </div>
+            <div id="errorResult" class="alert alert-danger" style="display: none;">
+                <strong>Error:</strong> <span id="errorMessage"></span>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Adding Bootstrap and jQuery -->
+@section Scripts {
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        $(document).ready(function () {
+            $('#validationForm').submit(function (event) {
+                event.preventDefault();
+
+                // Get the JSX code from the form
+                var jsxCode = $('#jsxCode').val();
+
+                // Clear previous results
+                $('#validationResult').hide();
+                $('#errorResult').hide();
+
+                // Call the API to validate the JSX code
+                $.ajax({
+                    url: '/api/validation/validate',
+                    type: 'POST',
+                    contentType: 'application/json',
+                    data: JSON.stringify({ JsxCode: jsxCode }),
+                    success: function (response) {
+                        // Show the formatted JSON result
+                        $('#validationResult').show();
+                        $('#jsonOutput').text(JSON.stringify(response, null, 4));
+                    },
+                    error: function (xhr, status, error) {
+                        // Display error message
+                        $('#errorResult').show();
+                        $('#errorMessage').text(xhr.responseText);
+                    }
+                });
+            });
+        });
+    </script>
+}
