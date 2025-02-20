@@ -1,37 +1,67 @@
-﻿using Microsoft.AspNetCore.Mvc;
+﻿using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Mvc;
 using Newtonsoft.Json;
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Text.RegularExpressions;
+using System.Threading.Tasks;
+using System.Linq;
 
 namespace WebApp_MVC_.Controllers
 {
-    // MVC Controller for handling both views and API requests
     public class ValidationController : Controller
     {
-        // Action to render the Index view (MVC page)
         public IActionResult Index()
         {
             return View();
         }
 
-        // API action to handle POST requests for validating JSX code
         [HttpPost("api/validation/validate")]
-        public IActionResult ValidateForm([FromBody] Models.JsonRequest request)
+        public async Task<IActionResult> ValidateForm([FromForm] Models.JsonRequest request, IFormFile reactFormFile)
         {
             try
             {
-                // Check if the JsxCode field is provided in the request
-                if (string.IsNullOrWhiteSpace(request?.JsxCode))
+                string jsxCode = request?.JsxCode;
+
+                if (reactFormFile != null)
                 {
-                    return BadRequest("The jsxCode field is required.");
+                    using (var reader = new StreamReader(reactFormFile.OpenReadStream()))
+                    {
+                        jsxCode = await reader.ReadToEndAsync();
+                    }
                 }
 
-                // Extract validation rules from the provided JSX code
-                var validationRules = ExtractValidationRules(request.JsxCode);
+                if (string.IsNullOrWhiteSpace(jsxCode))
+                {
+                    return BadRequest("The jsxCode field or file is required.");
+                }
 
-                // Convert extracted validation rules to JSON format and return them
-                string jsonResult = JsonConvert.SerializeObject(validationRules, Formatting.Indented);
+                // Basic React code validation
+                var validationResult = ValidateReactCode(jsxCode);
+                if (!validationResult.IsValid)
+                {
+                    return BadRequest(new
+                    {
+                        message = "Invalid React Code",
+                        errors = validationResult.Errors
+                    });
+                }
+
+                // Extract validation rules
+                var validationRules = ExtractValidationRules(jsxCode);
+
+                var result = new Dictionary<string, object>
+                {
+                    ["validationRules"] = validationRules,
+                    ["metadata"] = new
+                    {
+                        totalFields = validationRules.Count,
+                        //timestamp = DateTime.UtcNow
+                    }
+                };
+
+                string jsonResult = JsonConvert.SerializeObject(result, Formatting.Indented);
                 return Ok(jsonResult);
             }
             catch (Exception ex)
@@ -40,12 +70,88 @@ namespace WebApp_MVC_.Controllers
             }
         }
 
-        // Method to extract validation rules from JSX code
-        public static Dictionary<string, object> ExtractValidationRules(string jsxCode)
+        private class ValidationResult
+        {
+            public bool IsValid { get; set; }
+            public List<string> Errors { get; set; } = new List<string>();
+        }
+
+        private ValidationResult ValidateReactCode(string code)
+        {
+            var result = new ValidationResult { IsValid = true };
+
+            try
+            {
+                // Check for basic React component structure
+                if (!IsValidReactComponent(code))
+                {
+                    result.IsValid = false;
+                    result.Errors.Add("Invalid React component structure");
+                    return result;
+                }
+
+                //// Check for balanced JSX tags
+                //if (!HasBalancedTags(code))
+                //{
+                //    result.IsValid = false;
+                //    result.Errors.Add("Unmatched JSX tags found");
+                //}
+
+                return result;
+            }
+            catch (Exception ex)
+            {
+                result.IsValid = false;
+                result.Errors.Add($"Validation error: {ex.Message}");
+                return result;
+            }
+        }
+
+        private bool IsValidReactComponent(string code)
+        {
+            // Check for either functional or class component
+            var functionComponent = new Regex(@"(function|const)\s+\w+\s*\([^)]*\)\s*{");
+            var classComponent = new Regex(@"class\s+\w+\s+extends\s+React\.Component");
+            var arrowFunction = new Regex(@"const\s+\w+\s*=\s*\([^)]*\)\s*=>");
+
+            return functionComponent.IsMatch(code) ||
+                   classComponent.IsMatch(code) ||
+                   arrowFunction.IsMatch(code);
+        }
+
+        private bool HasBalancedTags(string code)
+        {
+            var stack = new Stack<string>();
+            var tagPattern = new Regex(@"</?([a-zA-Z][a-zA-Z0-9]*)|/>", RegexOptions.Compiled);
+
+            foreach (Match match in tagPattern.Matches(code))
+            {
+                if (match.Value == "/>")
+                {
+                    continue; // Self-closing tag
+                }
+
+                if (match.Value.StartsWith("</"))
+                {
+                    if (stack.Count == 0 || stack.Pop() != match.Groups[1].Value)
+                    {
+                        return false;
+                    }
+                }
+                else if (match.Value.StartsWith("<"))
+                {
+                    stack.Push(match.Groups[1].Value);
+                }
+            }
+
+            return stack.Count == 0;
+        }
+
+        private Dictionary<string, object> ExtractValidationRules(string jsxCode)
         {
             var rules = new Dictionary<string, object>();
 
-            // 1. Required Field Validation (e.g., 'Email is required')
+            // Required Field Validation
             var requiredPattern = new Regex(@"if\s*\(\s*!formData\.(\w+)\s*\)", RegexOptions.IgnoreCase);
             var requiredMatches = requiredPattern.Matches(jsxCode);
 
@@ -57,11 +163,15 @@ namespace WebApp_MVC_.Controllers
                     rules[fieldName] = new Dictionary<string, object>();
                 }
                 var fieldRules = (Dictionary<string, object>)rules[fieldName];
-                fieldRules["required"] = $"{fieldName} is required";
+                fieldRules["required"] = new
+                {
+                    value = true,
+                    message = $"{fieldName} is required"
+                };
             }
 
-            // 2. Regex Validation (e.g., Email regex)
-            var regexPattern = new Regex(@"/(.+?)\.test\(formData\.(\w+)\)", RegexOptions.IgnoreCase);
+            // Regex Validation (General)
+            var regexPattern = new Regex(@"/(.+?)/.test\(formData\.(\w+)\)", RegexOptions.IgnoreCase);
             var regexMatches = regexPattern.Matches(jsxCode);
 
             foreach (Match match in regexMatches)
@@ -72,58 +182,72 @@ namespace WebApp_MVC_.Controllers
                     rules[fieldName] = new Dictionary<string, object>();
                 }
                 var fieldRules = (Dictionary<string, object>)rules[fieldName];
-                fieldRules["regex"] = new
+                fieldRules["pattern"] = new
                 {
-                    pattern = match.Groups[1].Value,
-                    message = $"{fieldName} is invalid"
+                    value = match.Groups[1].Value,
+                    message = $"{fieldName} format is invalid"
                 };
             }
 
-            // 3. Range Validation (e.g., Age must be between 18 and 100)
-            var rangePattern = new Regex(@"formData\.(\w+)\s*<\s*(\d+)\s*\|\|\s*formData\.(\w+)\s*>=\s*(\d+)", RegexOptions.IgnoreCase);
-            var rangeMatches = rangePattern.Matches(jsxCode);
+            // Email Validation
+            var emailPattern = new Regex(@"if\s*\(\s*!formData\.(\w+)\s*\.match\(.+?\)\)", RegexOptions.IgnoreCase);
+            var emailMatches = emailPattern.Matches(jsxCode);
 
-            foreach (Match match in rangeMatches)
+            foreach (Match match in emailMatches)
             {
                 var fieldName = match.Groups[1].Value;
-                var min = int.Parse(match.Groups[2].Value);
-                var max = int.Parse(match.Groups[4].Value);
-
                 if (!rules.ContainsKey(fieldName))
                 {
                     rules[fieldName] = new Dictionary<string, object>();
                 }
                 var fieldRules = (Dictionary<string, object>)rules[fieldName];
-                fieldRules["range"] = new
+                fieldRules["email"] = new
                 {
-                    min,
-                    max,
-                    message = $"{fieldName} must be between {min} and {max}"
+                    value = true,
+                    message = $"{fieldName} must be a valid email address"
                 };
             }
 
-            // 4. Min Length Validation for Strings
-            var minLengthPattern = new Regex(@"formData\.(\w+)\.length\s*<\s*(\d+)", RegexOptions.IgnoreCase);
-            var minLengthMatches = minLengthPattern.Matches(jsxCode);
+            // Phone Number Validation
+            var phonePattern = new Regex(@"if\s*\(\s*!formData\.(\w+)\s*\.match\(.+?phone.+?\)\)", RegexOptions.IgnoreCase);
+            var phoneMatches = phonePattern.Matches(jsxCode);
 
-            foreach (Match match in minLengthMatches)
+            foreach (Match match in phoneMatches)
             {
                 var fieldName = match.Groups[1].Value;
-                var minLength = int.Parse(match.Groups[2].Value);
-
                 if (!rules.ContainsKey(fieldName))
                 {
                     rules[fieldName] = new Dictionary<string, object>();
                 }
                 var fieldRules = (Dictionary<string, object>)rules[fieldName];
-                fieldRules["minLength"] = new
+                fieldRules["phone"] = new
                 {
-                    minLength,
-                    message = $"{fieldName} must be at least {minLength} characters long"
+                    value = true,
+                    message = $"{fieldName} must be a valid phone number"
+                };
+            }
+
+            // Password Validation (at least 8 characters, 1 uppercase, 1 number)
+            var passwordPattern = new Regex(@"if\s*\(\s*!formData\.(\w+)\s*\.match\(.+?password.+?\)\)", RegexOptions.IgnoreCase);
+            var passwordMatches = passwordPattern.Matches(jsxCode);
+
+            foreach (Match match in passwordMatches)
+            {
+                var fieldName = match.Groups[1].Value;
+                if (!rules.ContainsKey(fieldName))
+                {
+                    rules[fieldName] = new Dictionary<string, object>();
+                }
+                var fieldRules = (Dictionary<string, object>)rules[fieldName];
+                fieldRules["password"] = new
+                {
+                    value = true,
+                    message = $"{fieldName} must be a valid password (at least 8 characters, 1 uppercase letter, and 1 number)"
                 };
             }
 
             return rules;
         }
     }
-}
+
+    }

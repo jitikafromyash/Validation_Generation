@@ -1,83 +1,324 @@
 ﻿@{
-    ViewData["Title"] = "Form Validation";
+    ViewData["Title"] = "JSX Validation Tool";
 }
 
-<!-- Page Title -->
-<div class="text-center my-5">
-    <h1 class="display-4">Form Validation</h1>
-    <p class="lead">Validate your JSX code and get real-time feedback in JSON format.</p>
-</div>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>@ViewData["Title"]</title>
+    <!-- Include Bootstrap CSS and other dependencies -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/prismjs/1.29.0/themes/prism-tomorrow.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.7.2/font/bootstrap-icons.css" rel="stylesheet">
+    <style>
+        .code-editor {
+            font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+            line-height: 1.5;
+            border-radius: 8px;
+            border: 2px solid #dee2e6;
+            transition: border-color 0.2s;
+        }
 
-<div class="container">
-    <!-- Form -->
-    <div class="card shadow-lg mb-5">
-        <div class="card-header bg-primary text-white">
-            <h4>Enter React JSX Code</h4>
+            .code-editor:focus {
+                border-color: #0d6efd;
+                box-shadow: 0 0 0 0.25rem rgba(13, 110, 253, 0.25);
+            }
+
+        .theme-switch {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 1000;
+        }
+
+        .dark-mode {
+            background-color: #1a1a1a;
+            color: #ffffff;
+        }
+
+            .dark-mode .card {
+                background-color: #2d2d2d;
+                border-color: #404040;
+            }
+
+            .dark-mode .code-editor {
+                background-color: #2d2d2d;
+                color: #ffffff;
+                border-color: #404040;
+            }
+
+        .loading-spinner {
+            display: none;
+            margin: 20px auto;
+        }
+
+        .file-drop-zone {
+            border: 2px dashed #dee2e6;
+            border-radius: 8px;
+            padding: 20px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+            .file-drop-zone:hover {
+                border-color: #0d6efd;
+                background-color: rgba(13, 110, 253, 0.1);
+            }
+
+        .validation-badge {
+            position: absolute;
+            top: -10px;
+            right: -10px;
+            padding: 8px;
+            border-radius: 50%;
+        }
+
+        .card-header {
+            background-color: rgb(13 202 240);
+        }
+    </style>
+</head>
+<body>
+    <!-- Theme Switch -->
+    <div class="theme-switch form-check form-switch">
+        <input class="form-check-input" type="checkbox" id="themeSwitch">
+        <label class="form-check-label" for="themeSwitch">
+            <i class="bi bi-moon-stars"></i>
+        </label>
+    </div>
+
+    <div class="container py-5">
+        <!-- Header Section -->
+        <div class="text-center mb-5">
+            <h1 class="display-4 fw-bold">JSX Validation Tool</h1>
+            <p class="lead">Validate your React JSX code with real-time syntax highlighting and detailed feedback</p>
+            <div class="d-flex justify-content-center gap-3">
+                <span class="badge bg-primary">React</span>
+                <span class="badge bg-secondary">JSX</span>
+                <span class="badge bg-success">Validation</span>
+            </div>
         </div>
-        <div class="card-body">
-            <form id="validationForm">
-                <div class="form-group">
-                    <label for="jsxCode" class="font-weight-bold">JSX Code:</label>
-                    <textarea id="jsxCode" class="form-control" rows="10" placeholder="Enter your JSX validation code here..." required></textarea>
+
+        <!-- Main Content -->
+        <div class="row g-4">
+            <!-- Input Section -->
+            <div class="col-lg-6">
+                <div class="card shadow-lg h-100 position-relative">
+                    <div class="card-header  text-white d-flex justify-content-between align-items-center">
+                        <h4 class="mb-0">Code Input</h4>
+                        <button class="btn btn-sm btn-light" id="clearBtn">
+                            <i class="bi bi-trash"></i> Clear
+                        </button>
+                    </div>
+                    <div class="card-body">
+                        <form id="validationForm" enctype="multipart/form-data">
+                            <div class="form-group mb-4">
+                                <label for="jsxCode" class="form-label fw-bold">JSX Code:</label>
+                                <textarea id="jsxCode"
+                                          class="form-control code-editor"
+                                          rows="12"
+                                          placeholder="Enter your JSX code here..."
+                                          spellcheck="false"></textarea>
+                            </div>
+
+                            <div class="file-drop-zone mb-4" id="dropZone">
+                                <i class="bi bi-cloud-upload display-4"></i>
+                                <p class="mb-2">Drag & drop your React file here</p>
+                                <small class="text-muted">or</small>
+                                <input type="file" id="reactFormFile" class="d-none" accept=".jsx,.js,.tsx,.ts" />
+                                <button type="button" class="btn btn-outline-primary mt-2" id="browseBtn">
+                                    Browse Files
+                                </button>
+                            </div>
+
+                            <div class="d-grid">
+                                <button type="submit" class="btn btn-success btn-lg">
+                                    <i class="bi bi-check-circle"></i> Validate Code
+                                </button>
+                            </div>
+                        </form>
+                    </div>
                 </div>
-                <div class="text-center mt-3">
-                    <button type="submit" class="btn btn-success btn-lg">Validate</button>
+            </div>
+
+            <!-- Results Section -->
+            <div class="col-lg-6">
+                <div class="card shadow-lg h-100 position-relative">
+                    <div class="card-header bg-info text-white d-flex justify-content-between align-items-center">
+                        <h4 class="mb-0">Validation Results</h4>
+                        <button class="btn btn-sm btn-light" id="copyBtn">
+                            <i class="bi bi-clipboard"></i> Copy
+                        </button>
+                    </div>
+                    <div class="card-body">
+                        <!-- Loading Spinner -->
+                        <div class="loading-spinner text-center">
+                            <div class="spinner-border text-primary" role="status">
+                                <span class="visually-hidden">Loading...</span>
+                            </div>
+                            <p class="mt-2">Validating your code...</p>
+                        </div>
+
+                        <!-- Results Content -->
+                        <div id="validationResult" class="alert alert-info d-none">
+                            <h5 class="d-flex align-items-center gap-2">
+                                <i class="bi bi-info-circle"></i> Validation Result:
+                            </h5>
+                            <pre id="jsonOutput" class="bg-light p-3 rounded mb-0 overflow-auto"></pre>
+                        </div>
+
+                        <div id="errorResult" class="alert alert-danger d-none">
+                            <h5 class="d-flex align-items-center gap-2">
+                                <i class="bi bi-exclamation-triangle"></i> Error:
+                            </h5>
+                            <p id="errorMessage" class="mb-0"></p>
+                        </div>
+                    </div>
                 </div>
-            </form>
+            </div>
         </div>
     </div>
 
-    <!-- Result Output -->
-    <div class="card shadow-lg">
-        <div class="card-header bg-info text-white">
-            <h4>Validation Result</h4>
-        </div>
-        <div class="card-body">
-            <div id="validationResult" class="alert alert-info" style="display: none;">
-                <h5>JSON Result:</h5>
-                <pre id="jsonOutput" class="bg-light p-3 rounded"></pre>
-            </div>
-            <div id="errorResult" class="alert alert-danger" style="display: none;">
-                <strong>Error:</strong> <span id="errorMessage"></span>
-            </div>
-        </div>
-    </div>
-</div>
-
-<!-- Adding Bootstrap and jQuery -->
-@section Scripts {
+    <!-- Scripts -->
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prismjs/1.29.0/prism.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prismjs/1.29.0/components/prism-jsx.min.js"></script>
+
     <script>
         $(document).ready(function () {
+            // Theme switching
+            $('#themeSwitch').change(function () {
+                $('body').toggleClass('dark-mode');
+            });
+
+            // File drag and drop handling
+            const dropZone = $('#dropZone');
+
+            dropZone.on('dragover', function (e) {
+                e.preventDefault();
+                $(this).addClass('border-primary bg-light');
+            });
+
+            dropZone.on('dragleave', function (e) {
+                e.preventDefault();
+                $(this).removeClass('border-primary bg-light');
+            });
+
+            dropZone.on('drop', function (e) {
+                e.preventDefault();
+                $(this).removeClass('border-primary bg-light');
+
+                const file = e.originalEvent.dataTransfer.files[0];
+                if (file) {
+                    handleFile(file);
+                }
+            });
+
+            // Browse button handling
+            $('#browseBtn').click(function () {
+                $('#reactFormFile').click();
+            });
+
+            $('#reactFormFile').change(function (e) {
+                const file = e.target.files[0];
+                if (file) {
+                    handleFile(file);
+                }
+            });
+
+            function handleFile(file) {
+                const reader = new FileReader();
+                reader.onload = function (e) {
+                    $('#jsxCode').val(e.target.result);
+                };
+                reader.readAsText(file);
+            }
+
+            // Clear button handling
+            $('#clearBtn').click(function () {
+                $('#jsxCode').val('');
+                $('#reactFormFile').val('');
+                $('#validationResult, #errorResult').addClass('d-none');
+            });
+
+            // Copy button handling
+            $('#copyBtn').click(function () {
+                const jsonOutput = $('#jsonOutput').text();
+                navigator.clipboard.writeText(jsonOutput).then(function () {
+                    const originalText = $('#copyBtn').html();
+                    $('#copyBtn').html('<i class="bi bi-check"></i> Copied!');
+                    setTimeout(function () {
+                        $('#copyBtn').html(originalText);
+                    }, 2000);
+                });
+            });
+
+            // Form submission
             $('#validationForm').submit(function (event) {
                 event.preventDefault();
 
-                // Get the JSX code from the form
-                var jsxCode = $('#jsxCode').val();
+                const jsxCode = $('#jsxCode').val();
+                const reactFormFile = $('#reactFormFile')[0].files[0];
 
-                // Clear previous results
-                $('#validationResult').hide();
-                $('#errorResult').hide();
+                if (!jsxCode && !reactFormFile) {
+                    $('#errorResult')
+                        .removeClass('d-none')
+                        .addClass('d-block');
+                    $('#errorMessage').text('Please enter JSX code or upload a file.');
+                    return;
+                }
 
-                // Call the API to validate the JSX code
+                // Clear previous results and show loading spinner
+                $('#validationResult, #errorResult').addClass('d-none');
+                $('.loading-spinner').show();
+
+                let formData = new FormData();
+                if (jsxCode) {
+                    formData.append('JsxCode', jsxCode);
+                }
+                if (reactFormFile) {
+                    formData.append('ReactFormFile', reactFormFile);
+                }
+
                 $.ajax({
                     url: '/api/validation/validate',
                     type: 'POST',
-                    contentType: 'application/json',
-                    data: JSON.stringify({ JsxCode: jsxCode }),
+                    data: formData,
+                    processData: false,
+                    contentType: false,
                     success: function (response) {
-                        // Show the formatted JSON result
-                        $('#validationResult').show();
-                        $('#jsonOutput').text(JSON.stringify(response, null, 4));
+                        $('.loading-spinner').hide();
+                        $('#validationResult')
+                            .removeClass('d-none')
+                            .addClass('d-block');
+
+                        const formattedJson = JSON.stringify(JSON.parse(response), null, 2);
+                        $('#jsonOutput').text(formattedJson);
+
+                        // Add success badge
+                        const badge = $('<div class="validation-badge bg-success"><i class="bi bi-check-circle text-white"></i></div>');
+                        $('.card:last').append(badge);
+                        setTimeout(() => badge.fadeOut('slow', function () { $(this).remove(); }), 3000);
                     },
                     error: function (xhr, status, error) {
-                        // Display error message
-                        $('#errorResult').show();
+                        $('.loading-spinner').hide();
+                        $('#errorResult')
+                            .removeClass('d-none')
+                            .addClass('d-block');
                         $('#errorMessage').text(xhr.responseText);
+
+                        // Add error badge
+                        const badge = $('<div class="validation-badge bg-danger"><i class="bi bi-x-circle text-white"></i></div>');
+                        $('.card:last').append(badge);
+                        setTimeout(() => badge.fadeOut('slow', function () { $(this).remove(); }), 3000);
                     }
                 });
             });
         });
     </script>
-}
+</body>
+</html>
