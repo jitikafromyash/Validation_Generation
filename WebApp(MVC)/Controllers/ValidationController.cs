@@ -7,6 +7,7 @@ using System.IO;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using System.Linq;
+using System.Text;
 
 namespace WebApp_MVC_.Controllers
 {
@@ -96,6 +97,181 @@ namespace WebApp_MVC_.Controllers
         }
 
 
+        [HttpPost("api/validation/convert-to-model")]
+        public IActionResult ConvertToModel([FromBody] string jsonValidation)
+        {
+            try
+            {
+                if (string.IsNullOrWhiteSpace(jsonValidation))
+                {
+                    return BadRequest("JSON validation data is required.");
+                }
+
+               
+                Console.WriteLine(jsonValidation);  
+
+                var validationData = JsonConvert.DeserializeObject<Dictionary<string, object>>(jsonValidation);
+
+                if (validationData == null || !validationData.ContainsKey("components"))
+                {
+                    return BadRequest("Invalid JSON structure. The 'components' key is missing.");
+                }
+
+                var components = JsonConvert.DeserializeObject<Dictionary<string, object>>(
+                    JsonConvert.SerializeObject(validationData["components"]));
+
+                if (components == null || !components.Any())
+                {
+                    return BadRequest("No components found in the validation data.");
+                }
+
+                var modelCode = GenerateCSharpModels(components);
+                return Ok(new { modelCode });
+            }
+            catch (Exception ex)
+            {
+                return BadRequest($"Error converting to model: {ex.Message}");
+            }
+        }
+
+
+        private string GenerateCSharpModels(Dictionary<string, object> components)
+        {
+            var sb = new StringBuilder();
+
+            // Add necessary namespaces
+            sb.AppendLine("using System;");
+            sb.AppendLine("using System.ComponentModel.DataAnnotations;");
+            sb.AppendLine();
+            sb.AppendLine("namespace WebApp_MVC_.Models");
+            sb.AppendLine("{");
+
+            foreach (var component in components)
+            {
+                var componentName = component.Key;
+                var componentData = JsonConvert.DeserializeObject<Dictionary<string, object>>(
+                    JsonConvert.SerializeObject(component.Value));
+
+                if (componentData != null && componentData.ContainsKey("validationRules"))
+                {
+                    var validationRules = JsonConvert.DeserializeObject<Dictionary<string, object>>(
+                        JsonConvert.SerializeObject(componentData["validationRules"]));
+
+                    if (validationRules != null && validationRules.Any())
+                    {
+                        // Generate class
+                        sb.AppendLine($"    public class {componentName}Model");
+                        sb.AppendLine("    {");
+
+                        foreach (var field in validationRules)
+                        {
+                            var fieldName = field.Key;
+                            var fieldRules = JsonConvert.DeserializeObject<Dictionary<string, object>>(
+                                JsonConvert.SerializeObject(field.Value));
+
+                            if (fieldRules != null)
+                            {
+                                // Add validation attributes
+                                foreach (var rule in fieldRules)
+                                {
+                                    if (rule.Key != "fieldMetadata")
+                                    {
+                                        var ruleDetails = JsonConvert.DeserializeObject<Dictionary<string, object>>(
+                                            JsonConvert.SerializeObject(rule.Value));
+
+                                        if (ruleDetails != null && ruleDetails.ContainsKey("message"))
+                                        {
+                                            string message = ruleDetails["message"].ToString();
+                                            string attribute = MapToValidationAttribute(rule.Key, ruleDetails, message);
+                                            sb.AppendLine($"        {attribute}");
+                                        }
+                                    }
+                                }
+
+                                // Determine property type
+                                string propertyType = DeterminePropertyType(fieldRules);
+
+                                // Add property
+                                sb.AppendLine($"        public {propertyType} {CapitalizeFirstLetter(fieldName)} {{ get; set; }}");
+                                sb.AppendLine();
+                            }
+                        }
+
+                        sb.AppendLine("    }");
+                        sb.AppendLine();
+                    }
+                }
+            }
+
+            sb.AppendLine("}");
+
+            return sb.ToString();
+        }
+
+        private string CapitalizeFirstLetter(string input)
+        {
+            if (string.IsNullOrEmpty(input))
+                return input;
+
+            return char.ToUpper(input[0]) + input.Substring(1);
+        }
+
+        private string DeterminePropertyType(Dictionary<string, object> fieldRules)
+        {
+            // Default type is string
+            string propertyType = "string";
+
+            // Check for specific types based on validation rules
+            if (fieldRules.ContainsKey("email"))
+            {
+                propertyType = "string";
+            }
+            else if (fieldRules.ContainsKey("password"))
+            {
+                propertyType = "string";
+            }
+            else if (fieldRules.ContainsKey("minLength") || fieldRules.ContainsKey("maxLength"))
+            {
+                propertyType = "string";
+            }
+
+            // For numeric fields, we might infer from other validation rules
+            // This would require more complex logic
+
+            return propertyType;
+        }
+
+        private string MapToValidationAttribute(string ruleType, Dictionary<string, object> ruleDetails, string message)
+        {
+            switch (ruleType.ToLower())
+            {
+                case "required":
+                    return $"[Required(ErrorMessage = \"{message}\")]";
+
+                case "email":
+                    return $"[EmailAddress(ErrorMessage = \"{message}\")]";
+
+                case "minlength":
+                    int minLength = Convert.ToInt32(ruleDetails["value"]);
+                    return $"[MinLength({minLength}, ErrorMessage = \"{message}\")]";
+
+                case "maxlength":
+                    int maxLength = Convert.ToInt32(ruleDetails["value"]);
+                    return $"[MaxLength({maxLength}, ErrorMessage = \"{message}\")]";
+
+                case "pattern":
+                    string pattern = ruleDetails["value"].ToString();
+                    return $"[RegularExpression(@\"{pattern}\", ErrorMessage = \"{message}\")]";
+
+                case "password":
+                    return $"[DataType(DataType.Password, ErrorMessage = \"{message}\")]";
+
+                default:
+                    return string.Empty;
+            }
+        }
+
+
         private class Component
         {
             public string Name { get; set; }
@@ -163,10 +339,10 @@ namespace WebApp_MVC_.Controllers
             // Pattern to match function components declared inside other components
             var nestedPatterns = new[]
             {
-        @"function\s+(\w+)\s*\([^)]*\)\s*{(.*?)return\s*\((.*?)\);?\s*}",
-        @"const\s+(\w+)\s*=\s*\([^)]*\)\s*=>\s*{(.*?)return\s*\((.*?)\);?\s*}",
-        @"const\s+(\w+)\s*=\s*\([^)]*\)\s*=>\s*\((.*?)\)"
-    };
+                @"function\s+(\w+)\s*\([^)]*\)\s*{(.*?)return\s*\((.*?)\);?\s*}",
+                @"const\s+(\w+)\s*=\s*\([^)]*\)\s*=>\s*{(.*?)return\s*\((.*?)\);?\s*}",
+                @"const\s+(\w+)\s*=\s*\([^)]*\)\s*=>\s*\((.*?)\)"
+            };
 
             foreach (var pattern in nestedPatterns)
             {
