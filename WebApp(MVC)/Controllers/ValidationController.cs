@@ -107,26 +107,28 @@ namespace WebApp_MVC_.Controllers
                     return BadRequest("JSON validation data is required.");
                 }
 
-               
-                Console.WriteLine(jsonValidation);  
-
+                Console.WriteLine(jsonValidation);
                 var validationData = JsonConvert.DeserializeObject<Dictionary<string, object>>(jsonValidation);
-
                 if (validationData == null || !validationData.ContainsKey("components"))
                 {
                     return BadRequest("Invalid JSON structure. The 'components' key is missing.");
                 }
-
                 var components = JsonConvert.DeserializeObject<Dictionary<string, object>>(
                     JsonConvert.SerializeObject(validationData["components"]));
-
                 if (components == null || !components.Any())
                 {
                     return BadRequest("No components found in the validation data.");
                 }
 
                 var modelCode = GenerateCSharpModels(components);
-                return Ok(new { modelCode });
+
+                // Option 1: Return as downloadable file
+                byte[] byteArray = Encoding.UTF8.GetBytes(modelCode);
+                var fileName = "ValidationModel.cs";
+                return File(byteArray, "text/plain", fileName);
+
+                // Option 2: If you still want to return JSON with the model code
+                // return Ok(new { modelCode, fileName = "ValidationModel.cs" });
             }
             catch (Exception ex)
             {

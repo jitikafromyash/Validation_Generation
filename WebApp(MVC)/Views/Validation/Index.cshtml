@@ -1,7 +1,5 @@
 ﻿@{
-
     ViewData["Title"] = "JSX Validation Tool";
-
 }
 
 <!DOCTYPE html>
@@ -15,7 +13,6 @@
     <link href="https://cdnjs.cloudflare.com/ajax/libs/prismjs/1.29.0/themes/prism-tomorrow.min.css" rel="stylesheet">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.7.2/font/bootstrap-icons.css" rel="stylesheet">
     <style>
-
         .code-editor {
             font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
             line-height: 1.5;
@@ -82,6 +79,11 @@
         .card-header {
             background-color: rgb(13 202 240);
         }
+
+        .action-buttons {
+            display: flex;
+            gap: 10px;
+        }
     </style>
 </head>
 
@@ -98,11 +100,12 @@
         <!-- Header Section -->
         <div class="text-center mb-5">
             <h1 class="display-4 fw-bold">JSX Validation Tool</h1>
-            <p class="lead">Validate your React JSX code with real-time syntax highlighting and detailed feedback</p>
+            <p class="lead">Validate your React JSX code with real-time syntax highlighting and generate C# models</p>
             <div class="d-flex justify-content-center gap-3">
                 <span class="badge bg-primary">React</span>
                 <span class="badge bg-secondary">JSX</span>
                 <span class="badge bg-success">Validation</span>
+                <span class="badge bg-info">C# Models</span>
             </div>
         </div>
 
@@ -111,7 +114,7 @@
             <!-- Input Section -->
             <div class="col-lg-6">
                 <div class="card shadow-lg h-100 position-relative">
-                    <div class="card-header  text-white d-flex justify-content-between align-items-center">
+                    <div class="card-header text-white d-flex justify-content-between align-items-center">
                         <h4 class="mb-0">Code Input</h4>
                         <button class="btn btn-sm btn-light" id="clearBtn">
                             <i class="bi bi-trash"></i> Clear
@@ -121,11 +124,11 @@
                         <form id="validationForm" enctype="multipart/form-data">
                             <div class="form-group mb-4">
                                 <label for="jsxCode" class="form-label fw-bold">JSX Code:</label>
-<textarea id="jsxCode"
-          class="form-control code-editor"
-          rows="12"
-          placeholder="Enter your JSX code here..."
-          spellcheck="false"></textarea>
+                                <textarea id="jsxCode"
+                                          class="form-control code-editor"
+                                          rows="12"
+                                          placeholder="Enter your JSX code here..."
+                                          spellcheck="false"></textarea>
                             </div>
 
                             <div class="file-drop-zone mb-4" id="dropZone">
@@ -134,7 +137,6 @@
                                 <small class="text-muted">or</small>
                                 <input type="file" id="reactFormFile" class="d-none" accept=".jsx,.js,.tsx,.ts" />
                                 <button type="button" class="btn btn-outline-primary mt-2" id="browseBtn">
-
                                     Browse Files
                                 </button>
                             </div>
@@ -153,10 +155,15 @@
             <div class="col-lg-6">
                 <div class="card shadow-lg h-100 position-relative">
                     <div class="card-header bg-info text-white d-flex justify-content-between align-items-center">
-                        <h4 class="mb-0">Validation Rules</h4>
-                        <button class="btn btn-sm btn-light" id="copyBtn">
-                            <i class="bi bi-clipboard"></i> Copy
-                        </button>
+                        <h4 class="mb-0">Validation Results</h4>
+                        <div class="action-buttons">
+                            <button class="btn btn-sm btn-light" id="copyBtn">
+                                <i class="bi bi-clipboard"></i> Copy
+                            </button>
+                            <button class="btn btn-sm btn-light" id="generateModelBtn" disabled>
+                                <i class="bi bi-code-slash"></i> Generate C# Model
+                            </button>
+                        </div>
                     </div>
                     <div class="card-body">
                         <!-- Loading Spinner -->
@@ -167,12 +174,33 @@
                             <p class="mt-2">Validating your code...</p>
                         </div>
 
+                        <!-- Loading Spinner for Model Generation -->
+                        <div class="loading-spinner-model text-center d-none">
+                            <div class="spinner-border text-success" role="status">
+                                <span class="visually-hidden">Loading...</span>
+                            </div>
+                            <p class="mt-2">Generating C# Model...</p>
+                        </div>
+
                         <!-- Results Content -->
                         <div id="validationResult" class="alert alert-info d-none">
                             <h5 class="d-flex align-items-center gap-2">
                                 <i class="bi bi-info-circle"></i> Validation Rules:
                             </h5>
-<pre id="jsonOutput" class="bg-light p-3 rounded mb-0 overflow-auto"></pre>
+                            <pre id="jsonOutput" class="bg-light p-3 rounded mb-0 overflow-auto"></pre>
+                        </div>
+
+                        <div id="modelResult" class="alert alert-success d-none">
+                            <h5 class="d-flex align-items-center gap-2">
+                                <i class="bi bi-code-slash"></i> Generated C# Model:
+                                <button class="btn btn-sm btn-outline-success" id="copyModelBtn">
+                                    <i class="bi bi-clipboard"></i>
+                                </button>
+                                <button class="btn btn-sm btn-outline-success" id="downloadModelBtn">
+                                    <i class="bi bi-download"></i>
+                                </button>
+                            </h5>
+                            <pre id="modelOutput" class="bg-light p-3 rounded mb-0 overflow-auto"></pre>
                         </div>
 
                         <div id="errorResult" class="alert alert-danger d-none">
@@ -192,229 +220,244 @@
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/js/bootstrap.bundle.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/prismjs/1.29.0/prism.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/prismjs/1.29.0/components/prism-jsx.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prismjs/1.29.0/components/prism-csharp.min.js"></script>
 
     <script>
-
         $(document).ready(function () {
+            // Store validation result
+            let validationData = null;
 
             // Theme switching
-
             $('#themeSwitch').change(function () {
-
                 $('body').toggleClass('dark-mode');
-
             });
 
             // File drag and drop handling
-
             const dropZone = $('#dropZone');
 
             dropZone.on('dragover', function (e) {
-
                 e.preventDefault();
-
                 $(this).addClass('border-primary bg-light');
-
             });
 
             dropZone.on('dragleave', function (e) {
-
                 e.preventDefault();
-
                 $(this).removeClass('border-primary bg-light');
-
             });
 
             dropZone.on('drop', function (e) {
-
                 e.preventDefault();
-
                 $(this).removeClass('border-primary bg-light');
-
                 const file = e.originalEvent.dataTransfer.files[0];
-
                 if (file) {
-
                     handleFile(file);
-
                 }
-
             });
 
             // Browse button handling
-
             $('#browseBtn').click(function () {
-
                 $('#reactFormFile').click();
-
             });
 
             $('#reactFormFile').change(function (e) {
-
                 const file = e.target.files[0];
-
                 if (file) {
-
                     handleFile(file);
-
                 }
-
             });
 
             function handleFile(file) {
-
                 const reader = new FileReader();
-
                 reader.onload = function (e) {
-
                     $('#jsxCode').val(e.target.result);
-
                 };
-
                 reader.readAsText(file);
-
             }
 
             // Clear button handling
-
             $('#clearBtn').click(function () {
-
                 $('#jsxCode').val('');
-
                 $('#reactFormFile').val('');
-
-                $('#validationResult, #errorResult').addClass('d-none');
-
+                $('#validationResult, #errorResult, #modelResult').addClass('d-none');
+                $('#generateModelBtn').prop('disabled', true);
+                validationData = null;
             });
 
-            // Copy button handling
-
+            // Copy validation JSON button handling
             $('#copyBtn').click(function () {
-
                 const jsonOutput = $('#jsonOutput').text();
-
                 navigator.clipboard.writeText(jsonOutput).then(function () {
-
                     const originalText = $('#copyBtn').html();
-
                     $('#copyBtn').html('<i class="bi bi-check"></i> Copied!');
-
                     setTimeout(function () {
-
                         $('#copyBtn').html(originalText);
-
                     }, 2000);
-
                 });
-
             });
 
-            // Form submission
+            // Copy model button handling
+            $('#copyModelBtn').click(function () {
+                const modelOutput = $('#modelOutput').text();
+                navigator.clipboard.writeText(modelOutput).then(function () {
+                    const originalText = $('#copyModelBtn').html();
+                    $('#copyModelBtn').html('<i class="bi bi-check"></i>');
+                    setTimeout(function () {
+                        $('#copyModelBtn').html(originalText);
+                    }, 2000);
+                });
+            });
 
+            // Download model button handling
+            $('#downloadModelBtn').click(function () {
+                const modelCode = $('#modelOutput').text();
+                // Create a blob with the model code
+                const blob = new Blob([modelCode], { type: 'text/plain' });
+                const url = window.URL.createObjectURL(blob);
+
+                // Create a link and trigger download
+                const a = document.createElement('a');
+                a.style.display = 'none';
+                a.href = url;
+                a.download = 'ValidationModel.cs';
+                document.body.appendChild(a);
+                a.click();
+
+                // Clean up
+                window.URL.revokeObjectURL(url);
+                document.body.removeChild(a);
+            });
+
+            // Generate model button handling
+            $('#generateModelBtn').click(function () {
+                if (!validationData) {
+                    $('#errorResult')
+                        .removeClass('d-none')
+                        .addClass('d-block');
+                    $('#errorMessage').text('No validation data available. Please validate your code first.');
+                    return;
+                }
+
+                // Hide results and show loading spinner
+                $('#modelResult').addClass('d-none');
+                $('.loading-spinner-model').removeClass('d-none');
+
+                // Call the API to generate model
+                $.ajax({
+                    url: '/api/validation/convert-to-model',
+                    type: 'POST',
+                    contentType: 'application/json',
+                    data: JSON.stringify(validationData),
+                    xhrFields: {
+                        responseType: 'blob'
+                    },
+                    success: function (blob) {
+                        $('.loading-spinner-model').addClass('d-none');
+
+                        // Read the blob content
+                        const reader = new FileReader();
+                        reader.onload = function (e) {
+                            const modelCode = e.target.result;
+
+                            // Display the model code
+                            $('#modelResult')
+                                .removeClass('d-none')
+                                .addClass('d-block');
+                            $('#modelOutput').text(modelCode);
+
+                            // Style with Prism.js
+                            Prism.highlightElement(document.getElementById('modelOutput'));
+                        };
+                        reader.readAsText(blob);
+                    },
+                    error: function (xhr, status, error) {
+                        $('.loading-spinner-model').addClass('d-none');
+                        $('#errorResult')
+                            .removeClass('d-none')
+                            .addClass('d-block');
+
+                        try {
+                            // Try to read response as text
+                            const reader = new FileReader();
+                            reader.onload = function (e) {
+                                $('#errorMessage').text(e.target.result);
+                            };
+                            reader.readAsText(xhr.response);
+                        } catch (e) {
+                            $('#errorMessage').text('Error generating C# model: ' + (xhr.responseText || error));
+                        }
+                    }
+                });
+            });
+
+            // Form submission for validation
             $('#validationForm').submit(function (event) {
-
                 event.preventDefault();
-
                 const jsxCode = $('#jsxCode').val();
-
                 const reactFormFile = $('#reactFormFile')[0].files[0];
 
                 if (!jsxCode && !reactFormFile) {
-
                     $('#errorResult')
-
                         .removeClass('d-none')
-
                         .addClass('d-block');
-
                     $('#errorMessage').text('Please enter JSX code or upload a file.');
-
                     return;
-
                 }
 
                 // Clear previous results and show loading spinner
-
-                $('#validationResult, #errorResult').addClass('d-none');
-
+                $('#validationResult, #errorResult, #modelResult').addClass('d-none');
                 $('.loading-spinner').show();
+                $('#generateModelBtn').prop('disabled', true);
 
                 let formData = new FormData();
-
                 if (jsxCode) {
-
                     formData.append('JsxCode', jsxCode);
-
                 }
-
                 if (reactFormFile) {
-
                     formData.append('ReactFormFile', reactFormFile);
-
                 }
 
                 $.ajax({
-
                     url: '/api/validation/validate',
-
                     type: 'POST',
-
                     data: formData,
-
                     processData: false,
-
                     contentType: false,
-
                     success: function (response) {
-
                         $('.loading-spinner').hide();
-
                         $('#validationResult')
-
                             .removeClass('d-none')
-
                             .addClass('d-block');
 
-                        const formattedJson = JSON.stringify(JSON.parse(response), null, 2);
+                        // Store the validation data for later use
+                        validationData = response;
 
+                        // Format and display JSON
+                        const formattedJson = JSON.stringify(JSON.parse(response), null, 2);
                         $('#jsonOutput').text(formattedJson);
 
+                        // Enable the generate model button
+                        $('#generateModelBtn').prop('disabled', false);
+
                         // Add success badge
-
                         const badge = $('<div class="validation-badge bg-success"><i class="bi bi-check-circle text-white"></i></div>');
-
                         $('.card:last').append(badge);
-
                         setTimeout(() => badge.fadeOut('slow', function () { $(this).remove(); }), 3000);
-
                     },
-
                     error: function (xhr, status, error) {
-
                         $('.loading-spinner').hide();
-
                         $('#errorResult')
-
                             .removeClass('d-none')
-
                             .addClass('d-block');
-
                         $('#errorMessage').text(xhr.responseText);
+                        validationData = null;
 
                         // Add error badge
-
                         const badge = $('<div class="validation-badge bg-danger"><i class="bi bi-x-circle text-white"></i></div>');
-
                         $('.card:last').append(badge);
-
                         setTimeout(() => badge.fadeOut('slow', function () { $(this).remove(); }), 3000);
-
                     }
-
                 });
-
             });
-
         });
     </script>
 </body>
