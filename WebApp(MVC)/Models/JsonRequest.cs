@@ -2,7 +2,7 @@
 {
     public class JsonRequest
     {
-        //public string FormId { get; set; }
         public string? JsxCode { get; set; }
+        public string? JsonValidations { get; set; }
     }
 }

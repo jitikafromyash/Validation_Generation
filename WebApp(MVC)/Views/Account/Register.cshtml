@@ -1,0 +1,129 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Register</title>
+    <style>
+        /* Basic reset */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        /* Body styling */
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f4f4f9;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            padding: 20px;
+        }
+
+        /* Form styling */
+        form {
+            margin-left:35%;
+            background: white;
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
+            width: 100%;
+            max-width: 400px;
+            border: 1px solid #ddd;
+        }
+
+        /* Heading */
+        h2 {
+            text-align: center;
+            margin-bottom: 20px;
+            color: #333;
+            font-size: 24px;
+        }
+
+        /* Labels */
+        label {
+            font-size: 14px;
+            font-weight: bold;
+            margin-bottom: 5px;
+            display: inline-block;
+            color: #555;
+        }
+
+        /* Input fields */
+        input[type="text"],
+        input[type="email"],
+        input[type="password"] {
+            width: 100%;
+            padding: 10px;
+            margin-bottom: 20px;
+            border: 1px solid #ccc;
+            border-radius: 5px;
+            font-size: 14px;
+            background-color: #f9f9f9;
+        }
+
+            input[type="text"]:focus,
+            input[type="email"]:focus,
+            input[type="password"]:focus {
+                outline: none;
+                border-color: #4CAF50;
+                background-color: #f0f8f0;
+            }
+
+        /* Button styling */
+        button {
+            width: 100%;
+            background-color: #4CAF50;
+            color: white;
+            padding: 12px;
+            border: none;
+            border-radius: 5px;
+            font-size: 16px;
+            cursor: pointer;
+            transition: background-color 0.3s ease;
+        }
+
+            button:hover {
+                background-color: #45a049;
+            }
+
+        /* Error message styling */
+        .error {
+            color: red;
+            font-size: 12px;
+            margin-top: -15px;
+            margin-bottom: 10px;
+        }
+
+        
+    </style>
+    <script>
+        function validateEmail() {
+            var email = document.getElementById("Email").value;
+            if (!email.endsWith("yash.com")) {
+                alert("Email must end with yash.com");
+                return false;
+            }
+            return true;
+        }
+    </script>
+</head>
+<body>
+    <form method="post" action="/Account/Register" onsubmit="return validateEmail()">
+        <h2>Register</h2>
+        <label for="Username">Username:</label>
+        <input type="text" name="Username" id="Username" required />
+
+        <label for="Email">Email:</label>
+        <input type="email" name="Email" id="Email" required />
+
+        <label for="Password">Password:</label>
+        <input type="password" name="Password" id="Password" required />
+
+        <button type="submit">Register</button>
+    </form>
+</body>
+</html>
