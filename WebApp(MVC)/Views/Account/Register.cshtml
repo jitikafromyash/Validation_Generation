@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Register</title>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600&display=swap" rel="stylesheet">
     <style>
         /* Basic reset */
         * {
@@ -14,22 +15,22 @@
 
         /* Body styling */
         body {
-            font-family: Arial, sans-serif;
-            background-color: #f4f4f9;
+            font-family: 'Poppins', sans-serif;
+            background-color: #f4f6f9;
             display: flex;
             justify-content: center;
             align-items: center;
             height: 100vh;
+            margin: 0;
             padding: 20px;
         }
 
         /* Form styling */
         form {
-            margin-left:35%;
             background: white;
-            padding: 30px;
-            border-radius: 8px;
-            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
+            padding: 35px;
+            border-radius: 15px;
+            box-shadow: 0 8px 20px rgba(0, 0, 0, 0.1);
             width: 100%;
             max-width: 400px;
             border: 1px solid #ddd;
@@ -38,17 +39,18 @@
         /* Heading */
         h2 {
             text-align: center;
-            margin-bottom: 20px;
+            margin-bottom: 30px;
+            font-size: 28px;
             color: #333;
-            font-size: 24px;
+            font-weight: 600;
         }
 
         /* Labels */
         label {
             font-size: 14px;
-            font-weight: bold;
-            margin-bottom: 5px;
-            display: inline-block;
+            font-weight: 500;
+            margin-bottom: 6px;
+            display: block;
             color: #555;
         }
 
@@ -57,37 +59,37 @@
         input[type="email"],
         input[type="password"] {
             width: 100%;
-            padding: 10px;
+            padding: 14px 20px;
             margin-bottom: 20px;
-            border: 1px solid #ccc;
-            border-radius: 5px;
-            font-size: 14px;
+            border: 1px solid #ddd;
+            border-radius: 10px;
+            font-size: 16px;
+            outline: none;
             background-color: #f9f9f9;
         }
 
             input[type="text"]:focus,
             input[type="email"]:focus,
             input[type="password"]:focus {
-                outline: none;
-                border-color: #4CAF50;
+                border-color: #007BFF;
                 background-color: #f0f8f0;
             }
 
         /* Button styling */
         button {
             width: 100%;
-            background-color: #4CAF50;
+            background-color: #007BFF;
             color: white;
-            padding: 12px;
+            padding: 14px;
             border: none;
-            border-radius: 5px;
+            border-radius: 10px;
             font-size: 16px;
             cursor: pointer;
             transition: background-color 0.3s ease;
         }
 
             button:hover {
-                background-color: #45a049;
+                background-color: #0056b3;
             }
 
         /* Error message styling */
@@ -98,7 +100,13 @@
             margin-bottom: 10px;
         }
 
-        
+        /* Footer text */
+        .footer-text {
+            margin-top: 35px;
+            font-size: 12px;
+            color: #aaa;
+            text-align: center;
+        }
     </style>
     <script>
         function validateEmail() {
@@ -114,16 +122,21 @@
 <body>
     <form method="post" action="/Account/Register" onsubmit="return validateEmail()">
         <h2>Register</h2>
-        <label for="Username">Username:</label>
+
+        <label for="Username">Username</label>
         <input type="text" name="Username" id="Username" required />
 
-        <label for="Email">Email:</label>
+        <label for="Email">Email</label>
         <input type="email" name="Email" id="Email" required />
 
-        <label for="Password">Password:</label>
+        <label for="Password">Password</label>
         <input type="password" name="Password" id="Password" required />
 
         <button type="submit">Register</button>
+
+        <p style="text-align: center; margin-top: 15px;">Already have an account? <a href="/Account/Login" style="color: #007BFF;">Login here</a></p>
+
+        
     </form>
 </body>
 </html>
