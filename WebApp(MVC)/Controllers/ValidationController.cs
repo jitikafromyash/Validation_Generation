@@ -2,6 +2,8 @@
 using Newtonsoft.Json;
 using System.Text.RegularExpressions;
 using System.Text;
+using System.IO.Compression;
+using System.Linq;
 
 namespace WebApp_MVC_.Controllers
 {
@@ -11,31 +13,55 @@ namespace WebApp_MVC_.Controllers
         {
             return View();
         }
+
         [HttpPost("api/validation/validate")]
         public async Task<IActionResult> ValidateForm([FromForm] Models.JsonRequest request, IFormFile reactFormFile)
         {
             try
             {
                 string? jsxCode = request?.JsxCode;
+                List<Component> components = new List<Component>();
+                Dictionary<string, object> projectInfo = new Dictionary<string, object>();
 
-                if (reactFormFile != null)
+                // Handle ZIP file upload
+                if (reactFormFile != null && reactFormFile.FileName.EndsWith(".zip", StringComparison.OrdinalIgnoreCase))
                 {
-                    using (var reader = new StreamReader(reactFormFile.OpenReadStream()))
+                    // Process ZIP file
+                    var zipProcessingResult = await ProcessReactZipFile(reactFormFile);
+                    components = zipProcessingResult.Components;
+                    projectInfo = zipProcessingResult.ProjectInfo;
+
+                    if (!components.Any())
                     {
-                        jsxCode = await reader.ReadToEndAsync();
+                        return BadRequest("No valid React components found in the project.");
                     }
                 }
-
-                if (string.IsNullOrWhiteSpace(jsxCode))
+                // Handle regular JSX file or direct code
+                else if (!string.IsNullOrWhiteSpace(jsxCode) || (reactFormFile != null && !reactFormFile.FileName.EndsWith(".zip", StringComparison.OrdinalIgnoreCase)))
                 {
-                    return BadRequest("The jsxCode field or file is required.");
+                    if (reactFormFile != null)
+                    {
+                        using (var reader = new StreamReader(reactFormFile.OpenReadStream()))
+                        {
+                            jsxCode = await reader.ReadToEndAsync();
+                        }
+                    }
+
+                    if (string.IsNullOrWhiteSpace(jsxCode))
+                    {
+                        return BadRequest("The jsxCode field or file is required.");
+                    }
+
+                    components = ExtractComponents(jsxCode);
+
+                    if (!components.Any())
+                    {
+                        return BadRequest("No valid React components found.");
+                    }
                 }
-
-                var components = ExtractComponents(jsxCode);
-
-                if (!components.Any())
+                else
                 {
-                    return BadRequest("No valid React components found.");
+                    return BadRequest("Either JSX code or a valid file (JSX/JS/TSX/TS or ZIP) is required.");
                 }
 
                 var result = new Dictionary<string, object>();
@@ -44,7 +70,6 @@ namespace WebApp_MVC_.Controllers
                 {
                     var validationResult = ValidateReactCode(component.Code);
 
-                    // If validation fails, return error with component name and issues
                     if (!validationResult.IsValid)
                     {
                         return BadRequest(new
@@ -57,14 +82,14 @@ namespace WebApp_MVC_.Controllers
 
                     var validationRules = ExtractValidationRules(component.Code);
 
-                    // Add component metadata to the result
                     result[component.Name] = new Dictionary<string, object>
                     {
                         ["validationRules"] = validationRules,
                         ["metadata"] = new
                         {
                             totalFields = validationRules.Count,
-                            componentType = component.Type
+                            componentType = component.Type,
+                            filePath = component.FilePath
                         }
                     };
                 }
@@ -84,10 +109,13 @@ namespace WebApp_MVC_.Controllers
                     ["metadata"] = globalMetadata
                 };
 
-                // Serialize the final result to JSON and return it
-                string jsonResult = JsonConvert.SerializeObject(finalResult, Formatting.Indented);
+                // Include project info if available
+                if (projectInfo.Any())
+                {
+                    finalResult["projectInfo"] = projectInfo;
+                }
 
-                return Ok(jsonResult);
+                return Ok(finalResult);
             }
             catch (Exception ex)
             {
@@ -96,45 +124,113 @@ namespace WebApp_MVC_.Controllers
         }
 
         [HttpPost("api/validation/convert-to-model")]
-        public IActionResult ConvertToModel([FromBody] string jsonValidation)
+        public IActionResult ConvertToModel([FromBody] Dictionary<string, object> validationData)
         {
             try
             {
-                if (string.IsNullOrWhiteSpace(jsonValidation))
+                if (validationData == null)
                 {
-                    return BadRequest("JSON validation data is required.");
+                    return BadRequest("Validation data is required.");
                 }
 
-                Console.WriteLine(jsonValidation);
-
-                var validationData = JsonConvert.DeserializeObject<Dictionary<string, object>>(jsonValidation);
-
-                if (validationData == null || !validationData.ContainsKey("components"))
-                {
-                    return BadRequest("Invalid JSON structure. The 'components' key is missing.");
-                }
-
-                var components = JsonConvert.DeserializeObject<Dictionary<string, object>>(
-                    JsonConvert.SerializeObject(validationData["components"]));
+                // Handle both structures:
+                // 1. New version with "components" wrapper
+                // 2. Old version where the root is already the components dictionary
+                Dictionary<string, object> components = validationData.ContainsKey("components")
+                    ? JsonConvert.DeserializeObject<Dictionary<string, object>>(validationData["components"].ToString())
+                    : validationData;
 
                 if (components == null || !components.Any())
                 {
-                    return BadRequest("No components found in the validation data.");
+                    return BadRequest("No valid components found in the validation data.");
                 }
 
                 var modelCode = GenerateCSharpModels(components);
 
                 byte[] byteArray = Encoding.UTF8.GetBytes(modelCode);
-                var fileName = "ValidationModel.cs";
+                var fileName = "ValidationModels.cs";
 
                 return File(byteArray, "text/plain", fileName);
-
             }
             catch (Exception ex)
             {
                 return BadRequest($"Error converting to model: {ex.Message}");
             }
         }
+
+
+       private async Task<(List<Component> Components, Dictionary<string, object> ProjectInfo)> ProcessReactZipFile(IFormFile zipFile)
+{
+    var components = new List<Component>();
+    var projectInfo = new Dictionary<string, object>();
+    var projectFiles = new List<string>();
+    string mainFormName = null;
+
+    using (var memoryStream = new MemoryStream())
+    {
+        await zipFile.CopyToAsync(memoryStream);
+        memoryStream.Position = 0;
+
+        using (var archive = new ZipArchive(memoryStream))
+        {
+            // First identify all potential component files
+            var componentFiles = archive.Entries
+                .Where(entry => !entry.FullName.EndsWith("/") &&
+                              (entry.FullName.EndsWith(".jsx") ||
+                               entry.FullName.EndsWith(".js") ||
+                               entry.FullName.EndsWith(".tsx") ||
+                               entry.FullName.EndsWith(".ts")))
+                .ToList();
+
+            projectFiles = componentFiles.Select(f => f.FullName).ToList();
+
+            // Process each component file
+            foreach (var entry in componentFiles)
+            {
+                using (var reader = new StreamReader(entry.Open()))
+                {
+                    var fileContent = await reader.ReadToEndAsync();
+                    var fileComponents = ExtractComponents(fileContent);
+
+                    foreach (var component in fileComponents)
+                    {
+                        component.FilePath = entry.FullName;
+                        components.Add(component);
+
+                        // Identify main form (prioritize files named "Form" or "App")
+                        if (mainFormName == null || 
+                            entry.Name.Contains("Form.") || 
+                            entry.Name.Contains("App."))
+                        {
+                            mainFormName = Path.GetFileNameWithoutExtension(entry.Name);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Add project structure information
+    projectInfo["projectFiles"] = projectFiles.Select(f => new
+    {
+        path = f,
+        isFormFile = f.EndsWith("Form.jsx") || f.EndsWith("Form.tsx") || 
+                    f.EndsWith("Form.js") || f.EndsWith("Form.ts")
+    }).ToList();
+
+    // Add main form name to project info
+    if (mainFormName != null)
+    {
+        projectInfo["mainFormName"] = mainFormName;
+        projectInfo["mainFormFile"] = projectFiles.FirstOrDefault(f => 
+            f.Contains(mainFormName + "."));
+    }
+
+    return (components, projectInfo);
+}
+
+
+        //to generate the c# model
         private string GenerateCSharpModels(Dictionary<string, object> components)
         {
             var sb = new StringBuilder();
@@ -152,88 +248,68 @@ namespace WebApp_MVC_.Controllers
                 var componentData = JsonConvert.DeserializeObject<Dictionary<string, object>>(
                     JsonConvert.SerializeObject(component.Value));
 
-                if (componentData != null && componentData.ContainsKey("validationRules"))
+                if (componentData == null || !componentData.ContainsKey("validationRules"))
                 {
-                    var validationRules = JsonConvert.DeserializeObject<Dictionary<string, object>>(
-                        JsonConvert.SerializeObject(componentData["validationRules"]));
+                    continue;
+                }
 
-                    if (validationRules != null && validationRules.Any())
+                var validationRules = JsonConvert.DeserializeObject<Dictionary<string, object>>(
+                    JsonConvert.SerializeObject(componentData["validationRules"]));
+
+                if (validationRules == null || !validationRules.Any())
+                {
+                    continue;
+                }
+
+                // Add class declaration
+                sb.AppendLine($"    public class {componentName}Model");
+                sb.AppendLine("    {");
+
+                foreach (var field in validationRules)
+                {
+                    var fieldName = field.Key;
+                    var fieldRules = JsonConvert.DeserializeObject<Dictionary<string, object>>(
+                        JsonConvert.SerializeObject(field.Value));
+
+                    if (fieldRules == null)
                     {
-                        // Generate class
-                        sb.AppendLine($"    public class {componentName}Model");
-                        sb.AppendLine("    {");
+                        continue;
+                    }
 
-                        foreach (var field in validationRules)
+                    // Add validation attributes
+                    foreach (var rule in fieldRules)
+                    {
+                        if (rule.Key == "fieldMetadata") continue;
+
+                        var ruleDetails = JsonConvert.DeserializeObject<Dictionary<string, object>>(
+                            JsonConvert.SerializeObject(rule.Value));
+
+                        if (ruleDetails == null || !ruleDetails.ContainsKey("message"))
                         {
-                            var fieldName = field.Key;
-                            var fieldRules = JsonConvert.DeserializeObject<Dictionary<string, object>>(
-                                JsonConvert.SerializeObject(field.Value));
-
-                            if (fieldRules != null)
-                            {
-                                // Add validation attributes
-                                foreach (var rule in fieldRules)
-                                {
-                                    if (rule.Key != "fieldMetadata")
-                                    {
-                                        var ruleDetails = JsonConvert.DeserializeObject<Dictionary<string, object>>(
-                                            JsonConvert.SerializeObject(rule.Value));
-
-                                        if (ruleDetails != null && ruleDetails.ContainsKey("message"))
-                                        {
-                                            string message = ruleDetails["message"].ToString();
-                                            string attribute = MapToValidationAttribute(rule.Key, ruleDetails, message);
-                                            sb.AppendLine($"        {attribute}");
-                                        }
-                                    }
-                                }
-
-                                // Determine property type
-                                string propertyType = DeterminePropertyType(fieldRules);
-
-                                // Add property
-                                sb.AppendLine($"        public {propertyType} {CapitalizeFirstLetter(fieldName)} {{ get; set; }}");
-                                sb.AppendLine();
-                            }
+                            continue;
                         }
 
-                        sb.AppendLine("    }");
-                        sb.AppendLine();
+                        string message = ruleDetails["message"].ToString();
+                        string attribute = MapToValidationAttribute(rule.Key, ruleDetails, message);
+
+                        if (!string.IsNullOrEmpty(attribute))
+                        {
+                            sb.AppendLine($"        {attribute}");
+                        }
                     }
+
+                    // Determine property type and add property
+                    string propertyType = DeterminePropertyType(fieldRules);
+                    sb.AppendLine($"        public {propertyType} {CapitalizeFirstLetter(fieldName)} {{ get; set; }}");
+                    sb.AppendLine();
                 }
+
+                sb.AppendLine("    }");
+                sb.AppendLine();
             }
 
             sb.AppendLine("}");
             return sb.ToString();
-        }
-
-        private string CapitalizeFirstLetter(string input)
-        {
-            if (string.IsNullOrEmpty(input))
-                return input;
-            return char.ToUpper(input[0]) + input.Substring(1);
-        }
-
-        private string DeterminePropertyType(Dictionary<string, object> fieldRules)
-        {
-            // Default type is string
-            string propertyType = "string";
-
-            // Check for specific types based on validation rules
-            if (fieldRules.ContainsKey("email"))
-            {
-                propertyType = "string";
-            }
-            else if (fieldRules.ContainsKey("password"))
-            {
-                propertyType = "string";
-            }
-            else if (fieldRules.ContainsKey("minLength") || fieldRules.ContainsKey("maxLength"))
-            {
-                propertyType = "string";
-            }
-
-            return propertyType;
         }
 
         private string MapToValidationAttribute(string ruleType, Dictionary<string, object> ruleDetails, string message)
@@ -260,11 +336,43 @@ namespace WebApp_MVC_.Controllers
             }
         }
 
-        private class Component
+        private string DeterminePropertyType(Dictionary<string, object> fieldRules)
         {
-            public string? Name { get; set; }
-            public string? Code { get; set; }
-            public string? Type { get; set; } // "class" or "function"
+            // Default type is string
+            string propertyType = "string";
+
+            // Check for specific types based on validation rules
+            if (fieldRules.ContainsKey("email"))
+            {
+                propertyType = "string";
+            }
+            else if (fieldRules.ContainsKey("password"))
+            {
+                propertyType = "string";
+            }
+            else if (fieldRules.ContainsKey("minLength") || fieldRules.ContainsKey("maxLength"))
+            {
+                propertyType = "string";
+            }
+
+            return propertyType;
+        }
+
+
+        private string CapitalizeFirstLetter(string input)
+        {
+            if (string.IsNullOrEmpty(input))
+                return input;
+            return char.ToUpper(input[0]) + input.Substring(1);
+        }
+
+
+        public class Component
+        {
+            public string Name { get; set; }
+            public string Code { get; set; }
+            public string Type { get; set; }
+            public string FilePath { get; set; } // Added for ZIP file support
         }
 
         private List<Component> ExtractComponents(string jsxCode)
@@ -503,7 +611,7 @@ namespace WebApp_MVC_.Controllers
                 {
                     errorMessages["pattern"] = patternMatch.Groups[1].Value;
                 }
- 
+
                 var phoneNumberErrorPattern = new Regex($@"!(?:formData|credentials|values|formValues)\.{fieldName}\.match\(.*?(\+?\d{1,3})?[-.\s]?\(?\d{1,4}?\)?[-.\s]?\d{1,4}[-.\s]?\d{1,4}[-.\s]?\d{1,4}\).*?(?:new)?Errors\.?{fieldName}\s*=\s*['""]([^'""]*)['""]");
                 var phoneNumberMatch = phoneNumberErrorPattern.Match(jsxCode);
 
@@ -585,7 +693,7 @@ namespace WebApp_MVC_.Controllers
             return new Dictionary<string, Regex>
             {
                 ["required"] = new Regex(@"(?:<TextField[^>]*required(?:={true}|\s|>)|if\s*\(\s*!(?:formData|credentials|values|formValues)\.(\w+)\s*\)|(\w+)\s+is\s+required)", RegexOptions.IgnoreCase),
-                ["email"] = new Regex(@"(?:<TextField[^>]*type\s*=\s*[""']email[""']|<TextField[^>]*label\s*=\s*[""']Email[""']|if\s*\(\s*!(?:formData|credentials|values|formValues)\.(\w+)\.match\(.*?email.*?\))", RegexOptions.IgnoreCase),
+                ["email"] = new Regex(@"(?:<TextField[^>]*(?:type\s*=\s*[""']email[""']|name\s*=\s*[""']\w*email\w*[""']|label\s*=\s*[""']\w*Email\w*[""']|placeholder\s*=\s*[""'][^""']*email[^""']*[""'])|if\s*\(\s*!(?:formData|credentials|values|formValues|state|formState)\.(\w*email\w*)\.(?:match|test)\([^)]*email[^)]*\)|const\s+\w+\s*=\s*\/[^\/]*email[^\/]*\/)", RegexOptions.IgnoreCase),
                 ["password"] = new Regex(@"(?:<TextField[^>]*type\s*=\s*[""']password[""']|if\s*\(\s*!(?:formData|credentials|values|formValues)\.(\w+)\.match\(.*?password.*?\))", RegexOptions.IgnoreCase),
                 ["minLength"] = new Regex(@"(?:<TextField[^>]*minLength\s*=\s*(\d+)|if\s*\(\s*(?:formData|credentials|values|formValues)\.(\w+)\.length\s*<\s*(\d+)\))", RegexOptions.IgnoreCase),
                 ["maxLength"] = new Regex(@"(?:<TextField[^>]*maxLength\s*=\s*(\d+)|if\s*\(\s*(?:formData|credentials|values|formValues)\.(\w+)\.length\s*>\s*(\d+)\))", RegexOptions.IgnoreCase),

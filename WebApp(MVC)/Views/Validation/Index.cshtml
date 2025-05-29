@@ -259,6 +259,58 @@
         .smaller-text {
             font-size: 19px;
         }
+       #extractedFormInfo {
+    background-color: #f8f9fa;
+    border-left: 4px solid #0d6efd;
+    border-radius: 4px;
+    padding: 12px 15px;
+}
+
+    #extractedFormInfo i {
+    font-size: 1.2rem;
+    color: #0d6efd;
+    }
+
+    #extractedFormInfo strong {
+        font-weight: 600;
+    }
+
+        #extractedFormInfo small {
+            font-size: 0.85rem;
+        }
+
+        .code-editor::first-line {
+            color: #0d6efd;
+            font-weight: bold;
+        }
+
+
+        #extractedFormInfo {
+            background-color: #f8f9fa;
+            border-left: 4px solid #0d6efd;
+            border-radius: 4px;
+            padding: 12px 15px;
+            transition: all 0.3s ease;
+        }
+
+            #extractedFormInfo i {
+                font-size: 1.2rem;
+                color: #0d6efd;
+            }
+
+            #extractedFormInfo strong {
+                font-weight: 600;
+            }
+
+            #extractedFormInfo small {
+                font-size: 0.85rem;
+                opacity: 0.8;
+            }
+
+        .dark-mode #extractedFormInfo {
+            background-color: #2d3748;
+            border-left-color: #4299e1;
+        }
     </style>
 </head>
 <body>
@@ -267,12 +319,13 @@
         <div class="text-center mb-5">
             <h1 class="display-4 fw-bold mb-3">SyncValidate</h1>
             <h6 class="display-4 fw-bold mb-3 smaller-text">Unified validation generator</h6>
-            <p class="lead">Validate your React JSX code with real-time syntax highlighting and generate C# models</p>
+            <p class="lead">Validate your React application with real-time syntax highlighting and generate C# models</p>
             <div class="d-flex justify-content-center gap-3 mb-2">
                 <span class="badge bg-primary">React</span>
                 <span class="badge bg-secondary">JSX</span>
                 <span class="badge bg-success">Validation</span>
                 <span class="badge bg-info">C# Models</span>
+                <span class="badge bg-warning">Zip</span>
             </div>
         </div>
         <!-- Main Content -->
@@ -292,18 +345,19 @@
                         <form id="validationForm" enctype="multipart/form-data">
                             <div class="form-group mb-4">
                                 <label for="jsxCode" class="form-label">
-                                    <i class="bi bi-code me-1"></i>JSX Code:
+                                    <i class="bi bi-code me-1"></i>JSX Code (optional):
                                 </label>
-                                <textarea id="jsxCode" class="form-control code-editor" rows="12" placeholder="Enter your JSX code here..." spellcheck="false"></textarea>
+                                <textarea id="jsxCode" class="form-control code-editor" rows="12" placeholder="Enter your JSX code here or upload a React project..." spellcheck="false"></textarea>
                             </div>
                             <div class="file-drop-zone mb-4" id="dropZone">
                                 <i class="bi bi-cloud-upload"></i>
-                                <p class="mb-2 fw-bold">Drag & drop your React file here</p>
+                                <p class="mb-2 fw-bold">Drag & drop your React project (ZIP) or JSX file here</p>
                                 <small class="text-muted d-block mb-2">or</small>
-                                <input type="file" id="reactFormFile" class="d-none" accept=".jsx,.js,.tsx,.ts" />
+                                <input type="file" id="reactFormFile" class="d-none" accept=".jsx,.js,.tsx,.ts,.zip" />
                                 <button type="button" class="btn btn-outline-primary" id="browseBtn">
                                     <i class="bi bi-folder"></i> Browse Files
                                 </button>
+                                <small class="text-muted d-block mt-2">Accepted: .jsx, .js, .tsx, .ts or .zip of React project</small>
                             </div>
                             <div class="d-grid">
                                 <button type="submit" class="btn btn-success btn-lg">
@@ -311,6 +365,31 @@
                                 </button>
                             </div>
                         </form>
+
+                        <!-- Update this section in your index.cshtml -->
+                        <div id="extractedFormInfo" class="alert alert-info d-none mb-4">
+                            <div class="d-flex align-items-start">
+                                <i class="bi bi-file-earmark-zip me-2 mt-1"></i>
+                                <div>
+                                    <h6 class="mb-2">Extracted Forms from ZIP:</h6>
+                                    <div id="extractionProgress" class="mb-2">
+                                        <div class="progress" style="height: 6px;">
+                                            <div id="extractionProgressBar" class="progress-bar progress-bar-striped progress-bar-animated"
+                                                 role="progressbar" style="width: 0%"></div>
+                                        </div>
+                                        <small id="progressText" class="text-muted">Processing files...</small>
+                                    </div>
+                                    <ul id="extractedFormsList" class="list-group list-group-flush">
+                                        <!-- Forms will be added dynamically here -->
+                                    </ul>
+                                    <div id="mainFormInfo" class="alert alert-success mt-2 mb-0 d-none">
+                                        <i class="bi bi-star-fill me-1"></i>
+                                        <span>Main form detected: </span>
+                                        <strong id="mainFormName"></strong>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -370,6 +449,13 @@
                             </h5>
                             <p id="errorMessage" class="mb-0"></p>
                         </div>
+                        <div id="projectInfo" class="alert alert-secondary d-none">
+                            <h5 class="d-flex align-items-center gap-2 mb-3">
+                                <i class="bi bi-folder text-secondary"></i> Project Information:
+                            </h5>
+                            <div id="projectFiles" class="mb-2"></div>
+                            <div id="mainFormFile" class="fw-bold"></div>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -385,7 +471,7 @@
     <script>
         $(document).ready(function () {
             let validationData = null;
-
+            let uploadedProjectFiles = [];
 
             // File drag and drop handling
             const dropZone = $('#dropZone');
@@ -416,22 +502,34 @@
                     handleFile(file);
                 }
             });
-
             function handleFile(file) {
-                const reader = new FileReader();
-                reader.onload = function (e) {
-                    $('#jsxCode').val(e.target.result);
-                };
-                reader.readAsText(file);
+                const fileType = file.name.split('.').pop().toLowerCase();
+
+                if (fileType === 'zip') {
+                    // For ZIP files, show a more informative message
+                    $('#jsxCode').val(`// Processing React project: ${file.name}\n// The form components will be extracted and validated`);
+                    uploadedProjectFiles = [];
+                    $('#projectInfo').addClass('d-none');
+                } else {
+                    // For regular JSX/JS files, read the content
+                    const reader = new FileReader();
+                    reader.onload = function (e) {
+                        $('#jsxCode').val(`// Validating file: ${file.name}\n${e.target.result}`);
+                        uploadedProjectFiles = [];
+                        $('#projectInfo').addClass('d-none');
+                    };
+                    reader.readAsText(file);
+                }
             }
 
             // Clear button handling
             $('#clearBtn').click(function () {
                 $('#jsxCode').val('');
                 $('#reactFormFile').val('');
-                $('#validationResult, #errorResult, #modelResult').addClass('d-none');
+                $('#validationResult, #errorResult, #modelResult, #projectInfo').addClass('d-none');
                 $('#generateModelBtn').prop('disabled', true);
                 validationData = null;
+                uploadedProjectFiles = [];
             });
 
             // Copy validation JSON button handling
@@ -520,34 +618,60 @@
                 event.preventDefault();
                 const jsxCode = $('#jsxCode').val();
                 const reactFormFile = $('#reactFormFile')[0].files[0];
+
                 if (!jsxCode && !reactFormFile) {
                     $('#errorResult').removeClass('d-none').addClass('d-block');
                     $('#errorMessage').text('Please enter JSX code or upload a file.');
                     return;
                 }
-                $('#validationResult, #errorResult, #modelResult').addClass('d-none');
+
+                $('#validationResult, #errorResult, #modelResult, #projectInfo').addClass('d-none');
                 $('.loading-spinner').show();
                 $('#generateModelBtn').prop('disabled', true);
+
                 let formData = new FormData();
-                if (jsxCode) {
+                if (jsxCode && !jsxCode.startsWith('// Uploaded React project:')) {
                     formData.append('JsxCode', jsxCode);
                 }
                 if (reactFormFile) {
                     formData.append('ReactFormFile', reactFormFile);
                 }
+
                 $.ajax({
                     url: '/api/validation/validate',
                     type: 'POST',
                     data: formData,
                     processData: false,
                     contentType: false,
+                    // Update the success handler in the AJAX call
                     success: function (response) {
                         $('.loading-spinner').hide();
                         $('#validationResult').removeClass('d-none').addClass('d-block');
-                        validationData = response;
-                        const formattedJson = JSON.stringify(JSON.parse(response), null, 2);
+
+                        // Display the form name in the extractedFormInfo section
+                        if (response.formName) {
+                            $('#extractedFormInfo').removeClass('d-none');
+                            $('#extractedFormName').html(`
+            <strong>Validating form:</strong> ${response.formName}
+            ${response.metadata ? `<small class="text-muted d-block">Found ${response.metadata.totalComponents} components with ${response.metadata.totalFields} validation rules</small>` : ''}
+        `);
+                        } else {
+                            $('#extractedFormInfo').addClass('d-none');
+                        }
+
+                        // Check if the response contains project information
+                        if (response.projectInfo) {
+                            uploadedProjectFiles = response.projectInfo.projectFiles || [];
+                            displayProjectInfo(response.projectInfo);
+                            validationData = response;
+                        } else {
+                            validationData = response;
+                        }
+
+                        const formattedJson = JSON.stringify(validationData, null, 2);
                         $('#jsonOutput').text(formattedJson);
                         $('#generateModelBtn').prop('disabled', false);
+
                         const badge = $('<div class="validation-badge bg-success"><i class="bi bi-check-circle text-white"></i></div>');
                         $('.card:last').append(badge);
                         setTimeout(() => badge.fadeOut('slow', function () { $(this).remove(); }), 3000);
@@ -557,12 +681,137 @@
                         $('#errorResult').removeClass('d-none').addClass('d-block');
                         $('#errorMessage').text(xhr.responseText);
                         validationData = null;
+                        uploadedProjectFiles = [];
+
                         const badge = $('<div class="validation-badge bg-danger"><i class="bi bi-x-circle text-white"></i></div>');
                         $('.card:last').append(badge);
                         setTimeout(() => badge.fadeOut('slow', function () { $(this).remove(); }), 3000);
                     }
                 });
             });
+
+            function displayProjectInfo(projectInfo) {
+                $('#projectInfo').removeClass('d-none');
+                const $projectFiles = $('#projectFiles').empty();
+                const $mainFormFile = $('#mainFormFile').empty();
+
+                // Display all project files
+                if (projectInfo.projectFiles && projectInfo.projectFiles.length > 0) {
+                    $projectFiles.append('<p>Project files:</p><ul class="list-unstyled"></ul>');
+                    const $fileList = $projectFiles.find('ul');
+
+                    projectInfo.projectFiles.forEach(file => {
+                        const isFormFile = typeof file === 'object' ? file.isFormFile :
+                            file.path.includes('Form.') || file.path.includes('App.');
+                        const filePath = typeof file === 'object' ? file.path : file;
+                        const iconClass = isFormFile ? 'bi-file-earmark-text text-primary' : 'bi-file-earmark';
+                        $fileList.append(
+                            `<li class="d-flex align-items-center gap-2 mb-1">
+                    <i class="bi ${iconClass}"></i>
+                    <span>${filePath}</span>
+                    ${isFormFile ? '<span class="badge bg-primary ms-2">Form File</span>' : ''}
+                </li>`
+                        );
+                    });
+                }
+
+                // Display main form file info
+                if (projectInfo.mainFormName || projectInfo.mainFormFile) {
+                    $mainFormFile.html(`
+            <strong>Main form:</strong> ${projectInfo.mainFormName || 'N/A'}
+            ${projectInfo.mainFormFile ? `<small class="text-muted d-block">${projectInfo.mainFormFile}</small>` : ''}
+        `);
+                }
+            }
+
+            });
+
+
+
+            // Add this to your existing JavaScript
+            function updateExtractionUI(response) {
+                const extractedFormInfo = document.getElementById('extractedFormInfo');
+                const extractedFormsList = document.getElementById('extractedFormsList');
+                const mainFormInfo = document.getElementById('mainFormInfo');
+                const mainFormName = document.getElementById('mainFormName');
+                const progressBar = document.getElementById('extractionProgressBar');
+                const progressText = document.getElementById('progressText');
+
+                // Show the extraction panel
+                extractedFormInfo.classList.remove('d-none');
+                extractedFormsList.innerHTML = '';
+
+                if (response.extractionProgress) {
+                    // Update progress during processing (for real-time updates)
+                    progressBar.style.width = `${response.extractionProgress.percentage}%`;
+                    progressText.textContent = response.extractionProgress.message;
+
+                    // Add each found form
+                    response.extractionProgress.foundForms.forEach(form => {
+                        const listItem = document.createElement('li');
+                        listItem.className = 'list-group-item d-flex justify-content-between align-items-center py-2';
+                        listItem.innerHTML = `
+                <span>
+                    <i class="bi bi-file-earmark-text me-1"></i>
+                    ${form.name}
+                    <small class="text-muted ms-2">${form.filePath}</small>
+                </span>
+                <span class="badge bg-primary rounded-pill">${form.type}</span>
+            `;
+                        extractedFormsList.appendChild(listItem);
+                    });
+                }
+
+                // When processing is complete
+                if (response.mainFormName) {
+                    progressBar.classList.remove('progress-bar-animated');
+                    progressBar.classList.remove('progress-bar-striped');
+                    progressBar.classList.add('bg-success');
+                    progressText.textContent = 'Processing complete';
+
+                    mainFormInfo.classList.remove('d-none');
+                    mainFormName.textContent = response.mainFormName;
+                }
+            }
+
+            // Modify your form submission handler
+            document.getElementById('validationForm').addEventListener('submit', async function (e) {
+                e.preventDefault();
+
+                // Show loading state
+                const submitBtn = e.target.querySelector('button[type="submit"]');
+                submitBtn.disabled = true;
+                submitBtn.innerHTML = '<i class="bi bi-hourglass"></i> Processing...';
+
+                try {
+                    const formData = new FormData();
+                    // Add your existing form data
+
+                    // Make the API call
+                    const response = await fetch('/api/validation/validate', {
+                        method: 'POST',
+                        body: formData
+                    });
+
+                    const data = await response.json();
+
+                    // Update the UI with extraction details
+                    if (data.projectInfo) {
+                        updateExtractionUI(data);
+                    }
+
+                    // Handle the rest of your response
+                    // ...
+
+                } catch (error) {
+                    console.error('Error:', error);
+                } finally {
+                    submitBtn.disabled = false;
+                    submitBtn.innerHTML = '<i class="bi bi-check-circle"></i> Validate Code';
+                }
+            
+
+
         });
     </script>
 </body>
